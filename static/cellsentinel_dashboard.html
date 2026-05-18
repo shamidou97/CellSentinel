@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CellSentinel — Battery Fault Detection Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:        #0a0c0f;
+    --bg2:       #111318;
+    --bg3:       #181c22;
+    --border:    #1e2530;
+    --accent:    #00e5ff;
+    --warn:      #ffb300;
+    --danger:    #ff3d57;
+    --ok:        #00e676;
+    --text:      #cdd6e0;
+    --muted:     #4a5568;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-left { display: flex; align-items: center; gap: 14px; }
+  .logo {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 600; font-size: 14px;
+    color: #000;
+  }
+  .title { font-family: var(--font-mono); font-size: 18px; font-weight: 600; letter-spacing: -0.5px; }
+  .subtitle { font-size: 11px; color: var(--muted); margin-top: 2px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--ok); letter-spacing: 1px;
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    background: var(--ok); border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── Battery selector ── */
+  .battery-tabs {
+    display: flex; gap: 8px; margin-bottom: 20px;
+  }
+  .bat-tab {
+    padding: 6px 16px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px; color: var(--muted);
+    cursor: pointer; transition: all .2s;
+  }
+  .bat-tab:hover { border-color: var(--accent); color: var(--text); }
+  .bat-tab.active { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 600; }
+
+  /* ── Metric cards ── */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0,1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .metric {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    position: relative; overflow: hidden;
+  }
+  .metric::before {
+    content: '';
+    position: absolute; top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+  .metric.warn::before { background: var(--warn); }
+  .metric.danger::before { background: var(--danger); }
+  .metric.ok::before { background: var(--ok); }
+  .metric-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .metric-value { font-family: var(--font-mono); font-size: 22px; font-weight: 600; line-height: 1; }
+  .metric-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  /* ── Grid layout ── */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .grid-full { margin-bottom: 16px; }
+
+  /* ── Chart cards ── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+  }
+  .card-title {
+    font-family: var(--font-mono);
+    font-size: 11px; font-weight: 500;
+    color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .card-sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+  .chart-wrap { position: relative; width: 100%; }
+
+  /* ── Fault timeline ── */
+  .timeline {
+    display: flex; gap: 2px; flex-wrap: wrap; margin-top: 8px;
+  }
+  .t-cell {
+    width: 12px; height: 20px; border-radius: 2px;
+    transition: transform .1s;
+    cursor: pointer;
+  }
+  .t-cell:hover { transform: scaleY(1.3); }
+  .t-cell.s0 { background: #00e676; opacity: 0.7; }
+  .t-cell.s1 { background: #ffb300; opacity: 0.85; }
+  .t-cell.s2 { background: #ff3d57; opacity: 0.95; }
+
+  /* ── Legend ── */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 10px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* ── Footer ── */
+  .footer {
+    margin-top: 24px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 10px; color: var(--muted);
+    font-family: var(--font-mono);
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">CS</div>
+    <div>
+      <div class="title">CellSentinel</div>
+      <div class="subtitle">Battery Fault Detection · NASA PCoE Dataset</div>
+    </div>
+  </div>
+  <div class="live-badge"><div class="live-dot"></div>MONITORING ACTIVE</div>
+</div>
+
+<!-- Battery selector -->
+<div class="battery-tabs">
+  <div class="bat-tab active" onclick="switchBattery('B0005',this)">B0005</div>
+  <div class="bat-tab" onclick="switchBattery('B0006',this)">B0006</div>
+  <div class="bat-tab" onclick="switchBattery('B0007',this)">B0007</div>
+  <div class="bat-tab" onclick="switchBattery('B0018',this)">B0018</div>
+  <div class="bat-tab" onclick="switchBattery('ALL',this)">All Batteries</div>
+</div>
+
+<!-- Metric cards -->
+<div class="metrics">
+  <div class="metric ok" id="m-soh">
+    <div class="metric-label">Final SOH</div>
+    <div class="metric-value" id="v-soh">71.4%</div>
+    <div class="metric-sub" id="s-soh">1.3251 Ah remaining</div>
+  </div>
+  <div class="metric" id="m-cycles">
+    <div class="metric-label">Discharge cycles</div>
+    <div class="metric-value" id="v-cycles">168</div>
+    <div class="metric-sub">charge: 170 · impedance: 278</div>
+  </div>
+  <div class="metric warn" id="m-fade">
+    <div class="metric-label">Capacity fade</div>
+    <div class="metric-value" id="v-fade">28.6%</div>
+    <div class="metric-sub" id="s-fade">1.8565 → 1.3251 Ah</div>
+  </div>
+  <div class="metric" id="m-eol">
+    <div class="metric-label">EOL threshold</div>
+    <div class="metric-value">1.4 Ah</div>
+    <div class="metric-sub">30% fade from rated 2Ah</div>
+  </div>
+  <div class="metric danger" id="m-fault">
+    <div class="metric-label">Fault state</div>
+    <div class="metric-value" id="v-fault">S1</div>
+    <div class="metric-sub" id="s-fault">Warning zone</div>
+  </div>
+</div>
+
+<!-- Row 1: SOH + Capacity fade -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">State of Health (SOH) — capacity fade</div>
+    <div class="card-sub">Normalised capacity over discharge cycles · EOL at 70%</div>
+    <div class="chart-wrap" style="height:220px"><canvas id="sohChart" role="img" aria-label="SOH fade curve over discharge cycles"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">All batteries — comparative SOH</div>
+    <div class="card-sub">B0006 shows most aggressive degradation</div>
+    <div class="chart-wrap" style="height:220px"><canvas id="compareChart" role="img" aria-label="Comparative SOH for all 4 batteries"></canvas></div>
+  </div>
+</div>
+
+<!-- Row 2: Fault state timeline -->
+<div class="grid-full card">
+  <div class="card-title">Fault state timeline — cycle-by-cycle classification</div>
+  <div class="card-sub">S0 = Normal &nbsp;·&nbsp; S1 = Warning (SOH 70–85%) &nbsp;·&nbsp; S2 = Fault (SOH &lt; 70%)</div>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#00e676"></div>S0 Normal</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#ffb300"></div>S1 Warning</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#ff3d57"></div>S2 Fault</div>
+  </div>
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<!-- Row 3: Distribution + Entropy + Impedance -->
+<div class="grid-3">
+  <div class="card">
+    <div class="card-title">Fault label distribution</div>
+    <div class="card-sub">Class balance across all batteries</div>
+    <div class="chart-wrap" style="height:180px"><canvas id="distChart" role="img" aria-label="Fault label distribution pie chart"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Shannon entropy H(V)</div>
+    <div class="card-sub">Voltage disorder signal · spikes → fault indicator</div>
+    <div class="chart-wrap" style="height:180px"><canvas id="entropyChart" role="img" aria-label="Shannon entropy over cycles"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Capacity distribution by battery</div>
+    <div class="card-sub">Final discharge capacity spread</div>
+    <div class="chart-wrap" style="height:180px"><canvas id="boxChart" role="img" aria-label="Capacity bar chart by battery"></canvas></div>
+  </div>
+</div>
+
+<!-- Row 4: Voltage rebound + Training split -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-title">Voltage rebound ΔV — fault physics feature</div>
+    <div class="card-sub">ΔV = V_end − V_start per discharge cycle</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="dvChart" role="img" aria-label="Voltage rebound delta V over cycles"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Train / val / test split</div>
+    <div class="card-sub">B0005+B0006+B0007 train · B0018 test</div>
+    <div class="chart-wrap" style="height:200px"><canvas id="splitChart" role="img" aria-label="Dataset train val test split bar chart"></canvas></div>
+  </div>
+</div>
+
+<div class="footer">
+  <span>CellSentinel v1.0 · NASA PCoE Battery Dataset · B. Saha &amp; K. Goebel (2007)</span>
+  <span id="ts"></span>
+</div>
+
+<script>
+document.getElementById('ts').textContent = new Date().toLocaleString();
+
+/* ── Battery data ── */
+const BDATA = {
+  B0005: { initial:1.8565, final:1.3251, cycles:168, charge:170, imp:278, soh:71.4, fade:28.6, state:'S1', stateLabel:'Warning zone' },
+  B0006: { initial:2.0353, final:1.1857, cycles:168, charge:170, imp:278, soh:58.3, fade:41.7, state:'S2', stateLabel:'Fault zone' },
+  B0007: { initial:1.8911, final:1.4325, cycles:168, charge:170, imp:278, soh:75.7, fade:24.3, state:'S1', stateLabel:'Warning zone' },
+  B0018: { initial:1.8550, final:1.3411, cycles:132, charge:134, imp:53,  soh:72.3, fade:27.7, state:'S1', stateLabel:'Warning zone' },
+};
+
+function simSOH(init, fin, n) {
+  return Array.from({length:n}, (_,i) => {
+    const t = i/(n-1);
+    return parseFloat(((init - (init-fin)*Math.pow(t,0.85))/init*100).toFixed(2));
+  });
+}
+
+function faultState(soh) {
+  if (soh >= 85) return 's0';
+  if (soh >= 70) return 's1';
+  return 's2';
+}
+
+function simEntropy(n) {
+  return Array.from({length:n}, (_,i) => {
+    const base = 2.8 + i/n * 0.9;
+    const noise = (Math.random()-0.5)*0.3;
+    return parseFloat((base+noise).toFixed(3));
+  });
+}
+
+function simDV(init, fin, n) {
+  return Array.from({length:n}, (_,i) => {
+    const t = i/(n-1);
+    const base = -0.8 - t*0.6;
+    const noise = (Math.random()-0.5)*0.1;
+    return parseFloat((base+noise).toFixed(3));
+  });
+}
+
+const COLORS = {
+  B0005:'#00e5ff', B0006:'#ff3d57', B0007:'#00e676', B0018:'#ffb300'
+};
+
+/* ── Build timeline ── */
+function buildTimeline(bat) {
+  const tl = document.getElementById('timeline');
+  tl.innerHTML = '';
+  const d = bat === 'ALL'
+    ? ['B0005','B0006','B0007','B0018'].flatMap(b => simSOH(BDATA[b].initial, BDATA[b].final, BDATA[b].cycles))
+    : simSOH(BDATA[bat].initial, BDATA[bat].final, BDATA[bat].cycles);
+  d.forEach((soh,i) => {
+    const el = document.createElement('div');
+    el.className = 't-cell ' + faultState(soh);
+    el.title = `Cycle ${i+1}: SOH ${soh.toFixed(1)}%`;
+    tl.appendChild(el);
+  });
+}
+
+/* ── Update metric cards ── */
+function updateMetrics(bat) {
+  if (bat === 'ALL') {
+    document.getElementById('v-soh').textContent   = '—';
+    document.getElementById('s-soh').textContent   = 'Select a battery';
+    document.getElementById('v-cycles').textContent = '636';
+    document.getElementById('v-fade').textContent  = '—';
+    document.getElementById('v-fault').textContent = '—';
+    document.getElementById('s-fault').textContent = 'All batteries';
+    return;
+  }
+  const d = BDATA[bat];
+  document.getElementById('v-soh').textContent    = d.soh + '%';
+  document.getElementById('s-soh').textContent    = d.final.toFixed(4) + ' Ah remaining';
+  document.getElementById('v-cycles').textContent = d.cycles;
+  document.getElementById('v-fade').textContent   = d.fade + '%';
+  document.getElementById('s-fade').textContent   = d.initial.toFixed(4) + ' → ' + d.final.toFixed(4) + ' Ah';
+  document.getElementById('v-fault').textContent  = d.state;
+  document.getElementById('s-fault').textContent  = d.stateLabel;
+  const fc = document.getElementById('m-fault');
+  fc.className = 'metric ' + (d.state==='S2'?'danger':d.state==='S1'?'warn':'ok');
+}
+
+/* ── SOH single battery chart ── */
+let sohChart, compareChart, distChart, entropyChart, boxChart, dvChart, splitChart;
+
+function buildSOHChart(bat) {
+  const ctx = document.getElementById('sohChart').getContext('2d');
+  if (sohChart) sohChart.destroy();
+  const bats = bat === 'ALL' ? ['B0005','B0006','B0007','B0018'] : [bat];
+  const datasets = bats.map(b => {
+    const d = BDATA[b];
+    const soh = simSOH(d.initial, d.final, d.cycles);
+    return {
+      label: b,
+      data: soh,
+      borderColor: COLORS[b],
+      borderWidth: bat==='ALL' ? 1.5 : 2,
+      pointRadius: 0,
+      tension: 0.4,
+      fill: bat !== 'ALL',
+      backgroundColor: bat !== 'ALL' ? COLORS[b]+'18' : 'transparent',
+    };
+  });
+  const maxCycles = Math.max(...bats.map(b=>BDATA[b].cycles));
+  sohChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: Array.from({length:maxCycles},(_,i)=>i+1), datasets },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:bat==='ALL', labels:{color:'#cdd6e0',font:{size:11},boxWidth:10}} },
+      scales:{
+        x:{ grid:{color:'#1e2530'}, ticks:{color:'#4a5568',maxTicksLimit:8},
+            title:{display:true,text:'Discharge cycle',color:'#4a5568',font:{size:11}} },
+        y:{ grid:{color:'#1e2530'}, ticks:{color:'#4a5568',callback:v=>v+'%'},
+            min:50, max:105,
+            title:{display:true,text:'SOH (%)',color:'#4a5568',font:{size:11}} }
+      }
+    }
+  });
+}
+
+/* ── Compare chart (always all 4) ── */
+function buildCompareChart() {
+  const ctx = document.getElementById('compareChart').getContext('2d');
+  if (compareChart) compareChart.destroy();
+  const datasets = ['B0005','B0006','B0007','B0018'].map(b => {
+    const d = BDATA[b];
+    return {
+      label: b,
+      data: simSOH(d.initial, d.final, d.cycles),
+      borderColor: COLORS[b],
+      borderWidth: 1.5, pointRadius: 0, tension: 0.4,
+    };
+  });
+  compareChart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: Array.from({length:168},(_,i)=>i+1), datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:true, labels:{color:'#cdd6e0',font:{size:11},boxWidth:10}} },
+      scales:{
+        x:{ grid:{color:'#1e2530'}, ticks:{color:'#4a5568',maxTicksLimit:8} },
+        y:{ grid:{color:'#1e2530'}, ticks:{color:'#4a5568',callback:v=>v+'%'}, min:50, max:110 }
+      }
+    }
+  });
+}
+
+/* ── Fault distribution ── */
+function buildDistChart(bat) {
+  const ctx = document.getElementById('distChart').getContext('2d');
+  if (distChart) distChart.destroy();
+  const bats = bat==='ALL' ? ['B0005','B0006','B0007','B0018'] : [bat];
+  let s0=0, s1=0, s2=0;
+  bats.forEach(b => {
+    const d = BDATA[b];
+    simSOH(d.initial,d.final,d.cycles).forEach(soh => {
+      if (soh>=85) s0++; else if (soh>=70) s1++; else s2++;
+    });
+  });
+  distChart = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels:['S0 Normal','S1 Warning','S2 Fault'],
+      datasets:[{
+        data:[s0,s1,s2],
+        backgroundColor:['#00e67640','#ffb30040','#ff3d5740'],
+        borderColor:['#00e676','#ffb300','#ff3d57'],
+        borderWidth:1.5,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:true,position:'bottom',
+        labels:{color:'#cdd6e0',font:{size:10},boxWidth:8,padding:8}} }
+    }
+  });
+}
+
+/* ── Entropy chart ── */
+function buildEntropyChart(bat) {
+  const ctx = document.getElementById('entropyChart').getContext('2d');
+  if (entropyChart) entropyChart.destroy();
+  const n = bat==='ALL' ? 168 : BDATA[bat].cycles;
+  const H = simEntropy(n);
+  entropyChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: Array.from({length:n},(_,i)=>i+1),
+      datasets:[{
+        label:'H(V)',
+        data: H,
+        borderColor:'#00e5ff',
+        borderWidth:1.2,
+        pointRadius:0,
+        tension:0.3,
+        fill:true,
+        backgroundColor:'#00e5ff10',
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568',maxTicksLimit:6}},
+        y:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568',callback:v=>v.toFixed(1)},
+           title:{display:true,text:'H (nats)',color:'#4a5568',font:{size:10}}}
+      }
+    }
+  });
+}
+
+/* ── Capacity by battery bar chart ── */
+function buildBoxChart() {
+  const ctx = document.getElementById('boxChart').getContext('2d');
+  if (boxChart) boxChart.destroy();
+  boxChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:['B0005','B0006','B0007','B0018'],
+      datasets:[
+        { label:'Initial', data:[1.8565,2.0353,1.8911,1.8550],
+          backgroundColor:['#00e5ff30','#ff3d5730','#00e67630','#ffb30030'],
+          borderColor:['#00e5ff','#ff3d57','#00e676','#ffb300'], borderWidth:1.5 },
+        { label:'Final', data:[1.3251,1.1857,1.4325,1.3411],
+          backgroundColor:['#00e5ff18','#ff3d5718','#00e67618','#ffb30018'],
+          borderColor:['#00e5ff','#ff3d57','#00e676','#ffb300'], borderWidth:1, borderDash:[3,2] },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:true,labels:{color:'#cdd6e0',font:{size:10},boxWidth:8}}},
+      scales:{
+        x:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568'}},
+        y:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568',callback:v=>v.toFixed(1)+' Ah'},
+           title:{display:true,text:'Capacity (Ah)',color:'#4a5568',font:{size:10}},
+           min:1.0, max:2.2}
+      }
+    }
+  });
+}
+
+/* ── ΔV chart ── */
+function buildDVChart(bat) {
+  const ctx = document.getElementById('dvChart').getContext('2d');
+  if (dvChart) dvChart.destroy();
+  const d = bat==='ALL' ? BDATA['B0005'] : BDATA[bat];
+  const dv = simDV(d.initial, d.final, d.cycles);
+  dvChart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: Array.from({length:d.cycles},(_,i)=>i+1),
+      datasets:[{
+        label:'ΔV',
+        data: dv,
+        borderColor:'#ffb300',
+        borderWidth:1.5,
+        pointRadius:0,
+        tension:0.3,
+        fill:true,
+        backgroundColor:'#ffb30012',
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568',maxTicksLimit:8}},
+        y:{grid:{color:'#1e2530'}, ticks:{color:'#4a5568',callback:v=>v.toFixed(2)+'V'},
+           title:{display:true,text:'ΔV (Volts)',color:'#4a5568',font:{size:10}}}
+      }
+    }
+  });
+}
+
+/* ── Train/val/test split ── */
+function buildSplitChart() {
+  const ctx = document.getElementById('splitChart').getContext('2d');
+  if (splitChart) splitChart.destroy();
+  splitChart = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:['B0005','B0006','B0007','B0018'],
+      datasets:[
+        { label:'Train',      data:[118,118,118,0],   backgroundColor:'#00e67640', borderColor:'#00e676', borderWidth:1.5 },
+        { label:'Validation', data:[50, 50, 50, 0],   backgroundColor:'#00e5ff30', borderColor:'#00e5ff', borderWidth:1.5 },
+        { label:'Test',       data:[0,  0,  0,  132], backgroundColor:'#ff3d5730', borderColor:'#ff3d57', borderWidth:1.5 },
+      ]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:true, labels:{color:'#cdd6e0',font:{size:11},boxWidth:8}}},
+      scales:{
+        x:{ stacked:true, grid:{color:'#1e2530'}, ticks:{color:'#4a5568'} },
+        y:{ stacked:true, grid:{color:'#1e2530'}, ticks:{color:'#4a5568'},
+            title:{display:true,text:'Cycles',color:'#4a5568',font:{size:10}} }
+      }
+    }
+  });
+}
+
+/* ── Switch battery ── */
+function switchBattery(bat, el) {
+  document.querySelectorAll('.bat-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  updateMetrics(bat);
+  buildTimeline(bat);
+  buildSOHChart(bat);
+  buildDistChart(bat);
+  buildEntropyChart(bat);
+  buildDVChart(bat);
+}
+
+/* ── Init ── */
+buildSOHChart('B0005');
+buildCompareChart();
+buildDistChart('B0005');
+buildEntropyChart('B0005');
+buildBoxChart();
+buildDVChart('B0005');
+buildSplitChart();
+buildTimeline('B0005');
+</script>
+</body>
+</html>
