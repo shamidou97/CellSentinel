@@ -180,6 +180,38 @@ CellSentinel/
 
 ---
 
+## Dataset Download
+
+The NASA PCoE battery dataset is not included in this repository.
+Download it directly from NASA:
+
+**Direct download (fastest):**
+```
+https://phm-datasets.s3.amazonaws.com/NASA/5.+Battery+Data+Set.zip
+```
+
+Place the extracted `.mat` files in the `data/` folder:
+```
+data/
+├── B0005.mat
+├── B0006.mat
+├── B0007.mat
+└── B0018.mat
+```
+
+> The dataset contains Li-ion 18650 batteries run through charge, discharge,
+> and Electrochemical Impedance Spectroscopy (EIS) cycles at 24°C until
+> end-of-life (30% capacity fade from 2Ah rated capacity).
+
+**Citation:**
+```
+Saha, B. and Goebel, K. (2007). Battery Data Set.
+NASA Ames Prognostics Data Repository, NASA Ames Research Center,
+Moffett Field, CA. https://ti.arc.nasa.gov/tech/dash/groups/pcoe/prognostic-data-repository/
+```
+
+---
+
 ## Installation
 
 ### Prerequisites
@@ -192,7 +224,7 @@ CellSentinel/
 
 ```bash
 # Clone repository
-git clone https://github.com/shamidou97/CellSentinel.git
+git clone https://github.com/yourusername/CellSentinel.git
 cd CellSentinel
 
 # Install dependencies
