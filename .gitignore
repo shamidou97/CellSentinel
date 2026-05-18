@@ -1,0 +1,10 @@
+data/*.mat
+data/*.pkl
+data/*.txt
+data/1.*
+data/2.*
+models/*.h5
+models/*.keras
+src/__pycache__/
+__pycache__/
+*.pyc
