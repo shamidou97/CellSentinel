@@ -180,6 +180,21 @@ CellSentinel/
 
 ---
 
+## Live Demo
+
+| Version | URL | Features |
+|---|---|---|
+| **Static Dashboard** | [GitHub Pages](https://shamidou97.github.io/CellSentinel/static/cellsentinel_dashboard.html) | All charts · real NASA data · interactive battery tabs |
+| **Full Dashboard** | `http://127.0.0.1:5000` (local) | Real data + live fault prediction · upload .mat file |
+
+### Run full dashboard locally
+```bash
+python src/app.py
+# Open http://127.0.0.1:5000
+```
+
+---
+
 ## Dataset Download
 
 The NASA PCoE battery dataset is not included in this repository.
